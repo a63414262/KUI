@@ -7,7 +7,6 @@ export async function onRequest(context) {
     const ADMIN_PASS = env.ADMIN_PASSWORD || "admin"; 
     const db = env.DB; 
 
-    // Agent 状态与流量上报
     if (action === "report" && method === "POST") {
         const data = await request.json(); 
         await db.prepare("UPDATE servers SET cpu = ?, mem = ?, last_report = ? WHERE ip = ?")
@@ -22,16 +21,13 @@ export async function onRequest(context) {
         return Response.json({ success: true });
     }
 
-    // Agent 拉取配置与路由规则
     if (action === "config" && method === "GET") {
         if (request.headers.get("Authorization") !== ADMIN_PASS) return Response.json({ error: "Unauthorized" }, { status: 401 });
         const ip = url.searchParams.get("ip");
         const now = Date.now();
         
-        // 提取该机器的流媒体解锁配置
         const serverInfo = await db.prepare("SELECT unlock_proxy FROM servers WHERE ip = ?").bind(ip).first();
 
-        // 核心风控拦截：仅下发启用、未超限且未过期的节点
         const query = `
             SELECT * FROM nodes 
             WHERE vps_ip = ? AND enable = 1 
@@ -54,7 +50,6 @@ export async function onRequest(context) {
         return Response.json({ success: true, server: serverInfo, configs: machineNodes });
     }
 
-    // 全局/单机订阅分发
     if (action === "sub" && method === "GET") {
         const ip = url.searchParams.get("ip");
         const token = url.searchParams.get("token");
@@ -96,7 +91,6 @@ export async function onRequest(context) {
 
     if (request.headers.get("Authorization") !== ADMIN_PASS) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    // 面板数据交互逻辑
     try {
         if (action === "data" && method === "GET") {
             const servers = (await db.prepare("SELECT * FROM servers ORDER BY last_report DESC").all()).results;
