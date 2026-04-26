@@ -2,157 +2,184 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>KUI 节点管理面板</title>
+    <title>KUI 高级管理面板</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* 关键修复：在 Vue 挂载前隐藏所有带 v-cloak 的元素，防止错乱闪烁 */
-        [v-cloak] { display: none !important; }
-    </style>
+    <style>[v-cloak] { display: none !important; }</style>
 </head>
-<body class="bg-gray-50 p-8 text-gray-800">
-    <div id="app" v-cloak class="max-w-3xl mx-auto mt-10">
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-8">
+    <div id="app" v-cloak class="max-w-5xl mx-auto space-y-6">
         
-        <div v-if="!isLoggedIn" class="bg-white p-8 rounded shadow max-w-sm mx-auto">
-            <h2 class="text-2xl font-bold mb-6 text-center">KUI 安全登录</h2>
-            <input v-model="password" type="password" placeholder="请输入管理密码" @keyup.enter="login" class="w-full border p-3 rounded mb-4 focus:outline-blue-500">
-            <button @click="login" class="w-full bg-black text-white p-3 rounded hover:bg-gray-800 transition">进入控制台</button>
+        <div class="bg-white p-6 rounded-lg shadow-sm flex justify-between items-center border-t-4 border-blue-600">
+            <h1 class="text-2xl font-bold text-gray-800">KUI 多机运维与节点控制台</h1>
+            <div class="space-x-4">
+                <button @click="refreshData" class="text-blue-600 hover:underline text-sm font-medium">刷新探针</button>
+            </div>
         </div>
 
-        <div v-else class="bg-white p-8 rounded shadow border border-gray-100">
-            <div class="flex justify-between items-center mb-6">
-                <h1 class="text-2xl font-bold">KUI 节点管理面板 (Pages 版)</h1>
-                <button @click="logout" class="text-sm text-gray-500 hover:text-black">退出登录</button>
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+            <h2 class="text-lg font-bold mb-4 border-b pb-2">接入新服务器 (VPS)</h2>
+            <div class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-500 mb-1">服务器别名</label>
+                    <input v-model="newVps.name" placeholder="例如: 搬瓦工-DC9" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-500 mb-1">公网 IP</label>
+                    <input v-model="newVps.ip" placeholder="8.8.8.8" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button @click="addVps" class="bg-black text-white px-6 py-2 rounded hover:bg-gray-800 transition shadow">添加并获取一键部署指令</button>
             </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded border">
-                <input v-model="form.name" placeholder="节点名称 (如: SG-01)" class="w-full border p-2 rounded">
-                <input v-model="form.vps_ip" placeholder="VPS 公网 IP" class="w-full border p-2 rounded">
-                <select v-model="form.protocol" class="w-full border p-2 rounded">
-                    <option value="VLESS">VLESS (推荐)</option>
-                    <option value="Reality">Reality</option>
-                    <option value="Hysteria2">Hysteria 2</option>
-                </select>
-                <input v-model="form.port" type="number" placeholder="监听端口 (默认 443)" class="w-full border p-2 rounded">
-                <button @click="save" class="md:col-span-2 bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition font-medium">添加并生成命令</button>
-            </div>
-            
-            <hr class="my-6 border-gray-200">
-            
-            <ul class="space-y-4">
-                <li v-if="nodes.length === 0" class="text-center text-gray-400 py-4">暂无节点数据，请在上方添加</li>
-                <li v-for="(node, i) in nodes" :key="i" class="border rounded p-4 shadow-sm hover:shadow transition bg-white">
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <span class="font-bold text-lg text-blue-600">{{node.name}}</span> 
-                            <span class="text-gray-600 ml-2">{{node.vps_ip}}</span>
-                            <span class="inline-block bg-gray-100 px-2 py-1 rounded text-xs ml-2 font-mono">{{node.protocol}} : {{node.port}}</span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div v-for="vps in servers" :key="vps.ip" class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div class="p-5 bg-gray-50 border-b flex justify-between items-start">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-bold text-lg text-gray-900">{{ vps.name }}</h3>
+                            <span :class="isOnline(vps.last_report) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" class="px-2 py-0.5 rounded-full text-xs font-bold">
+                                {{ isOnline(vps.last_report) ? '在线' : '离线' }}
+                            </span>
                         </div>
-                        <button @click="del(i)" class="text-red-500 hover:text-red-700 text-sm">删除节点</button>
+                        <p class="text-sm font-mono text-gray-500">{{ vps.ip }}</p>
                     </div>
+                    <button @click="deleteVps(vps.ip)" class="text-red-400 hover:text-red-600 text-sm">移除机器</button>
+                </div>
+
+                <div class="p-5 space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-gray-600">
+                            <span>CPU 使用率</span>
+                            <span>{{ vps.cpu || '0' }}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                            <div class="bg-blue-500 h-1.5 rounded-full" :style="{ width: (vps.cpu || 0) + '%' }"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1 text-gray-600">
+                            <span>内存使用率</span>
+                            <span>{{ vps.mem || '0' }}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-1.5">
+                            <div class="bg-purple-500 h-1.5 rounded-full" :style="{ width: (vps.mem || 0) + '%' }"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-5 bg-gray-50 border-t">
+                    <h4 class="font-semibold text-sm mb-3 flex justify-between items-center">
+                        该机挂载节点 
+                        <span class="text-xs font-normal text-gray-500">共 {{ getNodesByIp(vps.ip).length }} 个</span>
+                    </h4>
                     
-                    <div class="bg-gray-900 text-green-400 p-3 rounded font-mono text-sm relative group overflow-x-auto">
-                        <code>{{ generateCommand(node.vps_ip) }}</code>
-                        <button @click="copyCommand(generateCommand(node.vps_ip))" class="absolute right-2 top-2 bg-white text-black px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition">
-                            复制
-                        </button>
+                    <ul class="space-y-2 mb-4">
+                        <li v-for="node in getNodesByIp(vps.ip)" :key="node.id" class="flex justify-between items-center text-sm bg-white p-2 border rounded">
+                            <span><span class="font-mono bg-gray-100 px-1 rounded">{{ node.protocol }}</span> 端口: {{ node.port }}</span>
+                            <button @click="deleteNode(node.id)" class="text-red-500 text-xs hover:underline">删除</button>
+                        </li>
+                    </ul>
+
+                    <div class="flex gap-2">
+                        <select v-model="newNodeParams[vps.ip].protocol" class="border text-sm p-1.5 rounded flex-1">
+                            <option value="VLESS">VLESS</option>
+                            <option value="Reality">Reality</option>
+                            <option value="Hysteria2">Hysteria2</option>
+                        </select>
+                        <input v-model="newNodeParams[vps.ip].port" type="number" placeholder="端口" class="border text-sm p-1.5 rounded w-24">
+                        <button @click="addNode(vps.ip)" class="bg-blue-600 text-white text-sm px-3 py-1.5 rounded hover:bg-blue-700">添加</button>
                     </div>
-                </li>
-            </ul>
+
+                    <div class="mt-4 bg-gray-900 p-3 rounded-md relative group cursor-pointer" @click="copyCommand(generateCmd(vps.ip))">
+                        <p class="text-xs text-gray-400 mb-1">复制以下命令到该 VPS 执行 (探针+节点部署)：</p>
+                        <code class="text-green-400 font-mono text-xs break-all block">{{ generateCmd(vps.ip) }}</code>
+                        <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition rounded-md">
+                            <span class="text-white text-sm font-bold">点击复制命令</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="servers.length === 0" class="text-center py-12 text-gray-400">
+            请先在上方接入一台 VPS 以开始使用
         </div>
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref, reactive, onMounted } = Vue;
+
         createApp({
             setup() {
-                const isLoggedIn = ref(false);
-                const password = ref('');
-                const token = ref(localStorage.getItem('kui_token') || '');
+                const servers = ref([]);
                 const nodes = ref([]);
-                const form = ref({ name: '', vps_ip: '', protocol: 'VLESS', port: 443 });
-                
+                const newVps = ref({ name: '', ip: '' });
+                const newNodeParams = reactive({}); // 用于分别存储每台机器的新增节点表单
+
                 const currentDomain = window.location.origin;
 
-                const checkAuth = () => {
-                    if (token.value) {
-                        isLoggedIn.value = true;
-                        load();
-                    }
+                // 判断是否在线：当前时间减去最后上报时间，小于 10 分钟认为在线
+                const isOnline = (lastReport) => {
+                    if (!lastReport) return false;
+                    return (Date.now() - lastReport) < 10 * 60 * 1000;
                 };
 
-                const login = async () => {
-                    if (!password.value) return;
-                    const res = await fetch('/api/login', {
-                        method: 'POST',
-                        body: JSON.stringify({ password: password.value }),
-                        headers: { 'Content-Type': 'application/json' }
+                const refreshData = async () => {
+                    const res = await fetch('/api/data');
+                    const data = await res.json();
+                    servers.value = data.servers || [];
+                    nodes.value = data.nodes || [];
+                    
+                    // 初始化新增节点表单的状态
+                    servers.value.forEach(s => {
+                        if(!newNodeParams[s.ip]) {
+                            newNodeParams[s.ip] = { protocol: 'VLESS', port: 443 };
+                        }
                     });
-                    if (res.ok) {
-                        token.value = password.value;
-                        localStorage.setItem('kui_token', token.value);
-                        isLoggedIn.value = true;
-                        load();
-                    } else {
-                        alert('密码错误！');
+                };
+
+                const addVps = async () => {
+                    if(!newVps.value.name || !newVps.value.ip) return alert('请填全信息');
+                    await fetch('/api/vps', { method: 'POST', body: JSON.stringify(newVps.value) });
+                    newVps.value = { name: '', ip: '' };
+                    refreshData();
+                };
+
+                const deleteVps = async (ip) => {
+                    if(confirm('移除机器将同时删除其下的所有节点配置，确定吗？')) {
+                        await fetch('/api/vps?ip=' + ip, { method: 'DELETE' });
+                        refreshData();
                     }
                 };
 
-                const logout = () => {
-                    localStorage.removeItem('kui_token');
-                    isLoggedIn.value = false;
-                    token.value = '';
-                    password.value = '';
+                const getNodesByIp = (ip) => nodes.value.filter(n => n.vps_ip === ip);
+
+                const addNode = async (ip) => {
+                    const params = newNodeParams[ip];
+                    if(!params.port) return alert('请填写端口');
+                    const payload = { vps_ip: ip, protocol: params.protocol, port: params.port, id: Date.now().toString(), uuid: crypto.randomUUID() };
+                    await fetch('/api/nodes', { method: 'POST', body: JSON.stringify(payload) });
+                    refreshData();
                 };
 
-                const fetchApi = async (url, options = {}) => {
-                    options.headers = { ...options.headers, 'Authorization': token.value };
-                    const res = await fetch(url, options);
-                    if (res.status === 401) {
-                        logout();
-                        alert('登录已失效，请重新登录');
-                        throw new Error('Unauthorized');
-                    }
-                    return res;
+                const deleteNode = async (id) => {
+                    await fetch('/api/nodes?id=' + id, { method: 'DELETE' });
+                    refreshData();
                 };
 
-                const load = async () => {
-                    try {
-                        const res = await fetchApi('/api/list');
-                        nodes.value = await res.json();
-                    } catch (e) {}
-                };
-                
-                const save = async () => {
-                    if(!form.value.name || !form.value.vps_ip) return alert("请填写完整信息");
-                    await fetchApi('/api/add', { 
-                        method: 'POST', 
-                        body: JSON.stringify({...form.value, uuid: crypto.randomUUID()}) 
-                    });
-                    form.value = { name: '', vps_ip: '', protocol: 'VLESS', port: 443 };
-                    load();
-                };
-                
-                const del = async (i) => {
-                    if(confirm('确定删除该节点吗？')) {
-                        await fetchApi('/api/del?index=' + i, { method: 'DELETE' });
-                        load();
-                    }
-                };
-
-                // 关键修复：去掉了多余的转义符，使用标准的 JS 模板字符串
-                const generateCommand = (ip) => {
-                    return `bash <(curl -sL https://raw.githubusercontent.com/xiaok/KUI/main/vps/kui.sh) --api "${currentDomain}" --ip "${ip}"`;
+                // 生成通用的自动化部署指令 (请替换为你实际的通用仓库地址)
+                const generateCmd = (ip) => {
+                    return `bash <(curl -sL https://raw.githubusercontent.com/your-username/your-repo/main/vps/kui.sh) --api "${currentDomain}" --ip "${ip}"`;
                 };
 
                 const copyCommand = (text) => {
-                    navigator.clipboard.writeText(text).then(() => {
-                        alert('命令已复制，请在 VPS 终端粘贴运行');
-                    });
+                    navigator.clipboard.writeText(text).then(() => alert('一键部署命令已复制！'));
                 };
-                
-                onMounted(checkAuth);
-                return { isLoggedIn, password, login, logout, nodes, form, save, del, generateCommand, copyCommand };
+
+                onMounted(refreshData);
+
+                return { servers, nodes, newVps, newNodeParams, isOnline, refreshData, addVps, deleteVps, getNodesByIp, addNode, deleteNode, generateCmd, copyCommand };
             }
         }).mount('#app');
     </script>
