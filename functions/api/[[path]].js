@@ -7,31 +7,45 @@ export async function onRequest(context) {
     const ADMIN_PASS = env.ADMIN_PASSWORD || "admin"; 
     const db = env.DB; 
 
+    // Agent 上报接口：同时接收系统状态与节点流量增量 (Delta)
     if (action === "report" && method === "POST") {
         const data = await request.json(); 
         await db.prepare("UPDATE servers SET cpu = ?, mem = ?, last_report = ? WHERE ip = ?")
                 .bind(data.cpu, data.mem, Date.now(), data.ip).run();
+                
+        // 处理节点流量增量累加
+        if (data.node_traffic && data.node_traffic.length > 0) {
+            const stmts = data.node_traffic.map(nt => 
+                db.prepare("UPDATE nodes SET traffic_used = traffic_used + ? WHERE id = ?").bind(nt.delta_bytes, nt.id)
+            );
+            await db.batch(stmts);
+        }
         return Response.json({ success: true });
     }
 
+    // Agent 拉取配置接口：核心风控拦截引擎
     if (action === "config" && method === "GET") {
         if (request.headers.get("Authorization") !== ADMIN_PASS) return Response.json({ error: "Unauthorized" }, { status: 401 });
         const ip = url.searchParams.get("ip");
+        const now = Date.now();
         
-        const { results: machineNodes } = await db.prepare("SELECT * FROM nodes WHERE vps_ip = ?").bind(ip).all();
+        // 核心风控：仅下发启用、未超流量且未过期的节点
+        const query = `
+            SELECT * FROM nodes 
+            WHERE vps_ip = ? 
+            AND enable = 1 
+            AND (traffic_limit = 0 OR traffic_used < traffic_limit)
+            AND (expire_time = 0 OR expire_time > ?)
+        `;
+        const { results: machineNodes } = await db.prepare(query).bind(ip, now).all();
         
         for (let node of machineNodes) {
             if (node.protocol === "dokodemo-door" && node.relay_type === "internal") {
                 const targetNode = await db.prepare("SELECT * FROM nodes WHERE id = ?").bind(node.target_id).first();
                 if (targetNode) {
                     node.chain_target = {
-                        ip: targetNode.vps_ip,
-                        port: targetNode.port,
-                        protocol: targetNode.protocol,
-                        uuid: targetNode.uuid,
-                        sni: targetNode.sni,
-                        public_key: targetNode.public_key,
-                        short_id: targetNode.short_id
+                        ip: targetNode.vps_ip, port: targetNode.port, protocol: targetNode.protocol,
+                        uuid: targetNode.uuid, sni: targetNode.sni, public_key: targetNode.public_key, short_id: targetNode.short_id
                     };
                 }
             }
@@ -42,18 +56,19 @@ export async function onRequest(context) {
     if (action === "sub" && method === "GET") {
         const ip = url.searchParams.get("ip");
         const token = url.searchParams.get("token");
-
         if (token !== ADMIN_PASS) return new Response("Invalid Sub Token", { status: 403 });
 
-        let query = "SELECT * FROM nodes";
-        let sqlParams = [];
+        const now = Date.now();
+        // 订阅也走风控：超量或过期节点不在订阅中显示
+        let query = `SELECT * FROM nodes WHERE enable = 1 AND (traffic_limit = 0 OR traffic_used < traffic_limit) AND (expire_time = 0 OR expire_time > ?)`;
+        let sqlParams = [now];
+        
         if (ip) {
-            query += " WHERE vps_ip = ?";
+            query += " AND vps_ip = ?";
             sqlParams.push(ip);
         }
         
         const { results: targetNodes } = await db.prepare(query).bind(...sqlParams).all();
-        
         let subLinks = [];
         for (let node of targetNodes) {
             const vpsInfo = await db.prepare("SELECT name FROM servers WHERE ip = ?").bind(node.vps_ip).first();
@@ -68,15 +83,8 @@ export async function onRequest(context) {
             }
         }
 
-        // 使用 unescape 和 encodeURIComponent 确保包含中文备注时 Base64 不会报错
         const base64Sub = btoa(unescape(encodeURIComponent(subLinks.join('\n'))));
-        
-        return new Response(base64Sub, {
-            headers: {
-                "Content-Type": "text/plain; charset=utf-8",
-                "Cache-Control": "no-store"
-            }
-        });
+        return new Response(base64Sub, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }});
     }
 
     if (action === "login" && method === "POST") {
@@ -110,13 +118,22 @@ export async function onRequest(context) {
             if (method === "POST") {
                 const n = await request.json();
                 await db.prepare(`
-                    INSERT INTO nodes (id, uuid, vps_ip, protocol, port, sni, private_key, public_key, short_id, relay_type, target_ip, target_port, target_id) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO nodes (id, uuid, vps_ip, protocol, port, sni, private_key, public_key, short_id, relay_type, target_ip, target_port, target_id, enable, traffic_used, traffic_limit, expire_time) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
-                    n.id, n.uuid, n.vps_ip, n.protocol, n.port, 
-                    n.sni || null, n.private_key || null, n.public_key || null, n.short_id || null, 
-                    n.relay_type || null, n.target_ip || null, n.target_port || null, n.target_id || null
+                    n.id, n.uuid, n.vps_ip, n.protocol, n.port, n.sni || null, n.private_key || null, n.public_key || null, 
+                    n.short_id || null, n.relay_type || null, n.target_ip || null, n.target_port || null, n.target_id || null,
+                    1, 0, n.traffic_limit || 0, n.expire_time || 0
                 ).run();
+                return Response.json({ success: true });
+            }
+            if (method === "PUT") {
+                const { id, enable, reset_traffic } = await request.json();
+                if (reset_traffic) {
+                    await db.prepare("UPDATE nodes SET traffic_used = 0 WHERE id = ?").bind(id).run();
+                } else if (enable !== undefined) {
+                    await db.prepare("UPDATE nodes SET enable = ? WHERE id = ?").bind(enable, id).run();
+                }
                 return Response.json({ success: true });
             }
             if (method === "DELETE") {
