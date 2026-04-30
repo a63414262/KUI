@@ -57,7 +57,7 @@
                 </div>
             </div>
 
-            <!-- 🌟 升级版核心导航区 (完美集成在你圈出的位置) -->
+            <!-- 核心导航区 -->
             <div class="flex justify-center mb-4">
                 <div class="bg-slate-200/50 p-1.5 rounded-full flex flex-wrap justify-center gap-1 backdrop-blur-sm border border-white/50 shadow-inner">
                     <template v-if="role === 'admin'">
@@ -100,11 +100,11 @@
                     <div class="bg-white/60 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-white shadow-xl shadow-slate-200/40 flex flex-col xl:flex-row gap-4 items-end">
                         <div class="flex-1 w-full"><label class="block text-xs font-bold text-slate-400 mb-2 pl-2">新建用户名</label><input v-model="newUser.username" placeholder="如: user01" class="w-full bg-white/50 border border-white p-3 rounded-2xl transition hover:bg-white focus:bg-white"></div>
                         
-                        <!-- 🌟 新增：带有一键随机 UUID 生成按钮的密码框 -->
+                        <!-- 🌟 优化：默认空输入框，支持自定义输入，右侧保留一键随机按钮 -->
                         <div class="flex-1 w-full relative">
                             <label class="block text-xs font-bold text-slate-400 mb-2 pl-2">登录密码 / 随机UUID</label>
-                            <input v-model="newUser.password" type="text" placeholder="UUID 或 密码" class="w-full bg-white/50 border border-white p-3 pr-12 rounded-2xl transition hover:bg-white focus:bg-white font-mono text-sm">
-                            <button @click="generateUUIDForNewUser" title="重新生成 UUID" class="absolute right-3 top-[34px] p-1 bg-white rounded-lg shadow-sm hover:bg-indigo-50 transition-colors">🔄</button>
+                            <input v-model="newUser.password" type="text" placeholder="自定义密码 或 UUID" class="w-full bg-white/50 border border-white p-3 pr-12 rounded-2xl transition hover:bg-white focus:bg-white font-mono text-sm">
+                            <button @click="generateUUIDForNewUser" title="随机生成 UUID 密码" class="absolute right-3 top-[34px] p-1 bg-white rounded-lg shadow-sm hover:bg-indigo-50 transition-colors">🔄</button>
                         </div>
                         
                         <div class="flex-1 w-full"><label class="block text-xs font-bold text-slate-400 mb-2 pl-2">配额 (GB)</label><input v-model="newUser.traffic_limit_gb" type="number" placeholder="0为无限" class="w-full bg-white/50 border border-white p-3 rounded-2xl transition hover:bg-white focus:bg-white"></div>
@@ -194,7 +194,6 @@
                                 </div>
                             </div>
 
-                            <!-- 节点配置下发区 -->
                             <div class="px-6 md:px-8 pb-4">
                                 <div class="bg-gradient-to-br from-white/80 to-white/40 p-5 rounded-[1.5rem] border border-white shadow-sm">
                                     <select v-model="newNodeParams[vps.ip].username" class="w-full border-none bg-indigo-50/50 text-indigo-700 font-bold text-sm p-3 rounded-xl outline-none mb-3">
@@ -494,8 +493,7 @@
                     const limit = newUser.traffic_limit_gb ? Math.floor(parseFloat(newUser.traffic_limit_gb) * 1073741824) : 0; 
                     const expire = newUser.expire_date ? new Date(newUser.expire_date).getTime() : 0; 
                     await fetchApi('/api/users', { method: 'POST', body: JSON.stringify({ ...newUser, traffic_limit: limit, expire_time: expire }) }); 
-                    Object.assign(newUser, { username: '', traffic_limit_gb: '', expire_date: '' }); 
-                    generateUUIDForNewUser(); // 自动生成下一个随机UUID
+                    Object.assign(newUser, { username: '', password: '', traffic_limit_gb: '', expire_date: '' }); 
                     refreshData(); 
                 };
                 
@@ -582,7 +580,6 @@
                 const copyCommand = (txt, msg) => navigator.clipboard.writeText(txt).then(() => alert(msg));
 
                 onMounted(() => { 
-                    generateUUIDForNewUser(); // 初始化生成第一个UUID
                     if (authKey.value && currentUser.value) { 
                         isLoggedIn.value = true; 
                         activeTab.value = role.value === 'admin' ? 'nodes' : 'dashboard';
