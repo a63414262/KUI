@@ -104,11 +104,17 @@
 
                 <!-- 服务器与节点管理板块 -->
                 <div v-if="activeTab === 'nodes'" class="space-y-8">
-                    <!-- 接入机器表单 -->
+                    <!-- 🌟 升级修复：接入机器表单 (增加了 OS 架构选择器) -->
                     <div class="bg-white/60 backdrop-blur-xl p-6 md:p-8 rounded-[2rem] border border-white shadow-xl shadow-slate-200/40 flex flex-col md:flex-row gap-4 items-end">
                         <div class="flex-1"><label class="block text-xs font-bold text-slate-400 mb-2 pl-2">服务器别名</label><input v-model="newVps.name" placeholder="例如: 日本软银 01" class="w-full bg-white/50 border border-white p-3 rounded-2xl transition hover:bg-white focus:bg-white"></div>
                         <div class="flex-1"><label class="block text-xs font-bold text-slate-400 mb-2 pl-2">公网 IP</label><input v-model="newVps.ip" placeholder="8.8.8.8" class="w-full bg-white/50 border border-white p-3 rounded-2xl transition hover:bg-white focus:bg-white"></div>
-                        <button @click="addVps" class="bg-slate-800 text-white px-8 py-3.5 rounded-2xl font-bold hover:bg-black transition-all shadow-lg hover:scale-105">接入机器</button>
+                        <div class="w-full md:w-48"><label class="block text-xs font-bold text-slate-400 mb-2 pl-2">系统架构</label>
+                            <select v-model="newVps.os" class="w-full bg-white/50 border border-white p-3 rounded-2xl transition hover:bg-white focus:bg-white outline-none font-medium text-slate-700">
+                                <option value="debian">Ubuntu / Debian</option>
+                                <option value="alpine">Alpine Linux</option>
+                            </select>
+                        </div>
+                        <button @click="addVps" class="bg-slate-800 text-white px-8 py-3.5 rounded-2xl font-bold hover:bg-black transition-all shadow-lg hover:scale-105 whitespace-nowrap">接入机器</button>
                     </div>
 
                     <!-- 机器列表大网格 -->
@@ -185,7 +191,6 @@
                                         <div class="bg-slate-100/50 p-3 rounded-xl"><label class="block text-[10px] text-slate-400 font-bold mb-1">到期日(留空永久)</label><input v-model="newNodeParams[vps.ip].expire_date" type="date" class="w-full text-sm bg-transparent outline-none font-bold text-slate-700"></div>
                                     </div>
 
-                                    <!-- 🌟 修复：找回 Reality 的伪装域名下拉框 Datalist -->
                                     <div v-if="newNodeParams[vps.ip].protocol === 'Reality'" class="bg-slate-100/50 p-3 rounded-xl mb-3">
                                         <input v-model="newNodeParams[vps.ip].sni" :list="'sni-rec-' + vps.ip" placeholder="伪装域名: 支持手填或下拉" class="w-full bg-transparent outline-none text-sm font-medium text-slate-700">
                                         <datalist :id="'sni-rec-' + vps.ip">
@@ -255,11 +260,19 @@
                                 <div v-if="getNodesByIp(vps.ip).length === 0" class="text-center text-slate-400 text-xs py-6 border-2 border-dashed border-slate-200 rounded-2xl font-medium">暂无节点配置，请在上方添加</div>
                             </div>
 
-                            <!-- 底部操作按钮 -->
+                            <!-- 🌟 升级修复：底部操作区 (动态OS指令展示与反悔切换) -->
                             <div class="p-4 md:p-6 bg-slate-100/50 border-t border-white grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div class="bg-slate-800 p-4 rounded-[1.25rem] cursor-pointer group shadow-inner hover:bg-black transition-colors" @click="copyCommand(generateCmd(vps.ip), '部署指令已复制！')">
-                                    <div class="text-[10px] text-slate-400 font-bold uppercase mb-1.5 flex justify-between"><span>Deploy Agent Command</span><span class="opacity-0 group-hover:opacity-100 transition text-slate-500">Click to copy</span></div>
-                                    <div class="text-emerald-400 font-mono text-xs truncate">bash <(curl -sL ...</div>
+                                <div class="bg-slate-800 p-4 rounded-[1.25rem] group shadow-inner transition-colors">
+                                    <div class="text-[10px] text-slate-400 font-bold uppercase mb-2 flex justify-between items-center">
+                                        <span>Deploy Command</span>
+                                        <div class="flex gap-2 text-[9px]">
+                                            <label class="cursor-pointer hover:text-white flex items-center gap-1"><input type="radio" v-model="deployOsMap[vps.ip]" @change="saveOsMap" value="debian" class="accent-indigo-500"> Ubuntu/Debian</label>
+                                            <label class="cursor-pointer hover:text-white flex items-center gap-1"><input type="radio" v-model="deployOsMap[vps.ip]" @change="saveOsMap" value="alpine" class="accent-indigo-500"> Alpine</label>
+                                        </div>
+                                    </div>
+                                    <div class="text-emerald-400 font-mono text-xs truncate cursor-pointer hover:text-emerald-300 transition-colors" @click="copyCommand(generateCmd(vps.ip), '部署指令已复制！')">
+                                        {{ generateCmd(vps.ip) }}
+                                    </div>
                                 </div>
                                 <div class="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-[1.25rem] cursor-pointer transition flex items-center justify-center text-white font-bold shadow-lg hover:scale-[1.02] active:scale-95" @click="copyCommand(generateSubLink(vps.ip), '单机节点订阅已复制！')">复制该机专属订阅</div>
                             </div>
@@ -310,15 +323,22 @@
                 const isLoggedIn = ref(false); const loginUser = ref(''); const password = ref('');
                 const currentUser = ref(localStorage.getItem('kui_user') || ''); const authKey = ref(localStorage.getItem('kui_auth_key') || ''); const role = ref(localStorage.getItem('kui_role') || '');
                 const activeTab = ref('vps'); const servers = ref([]); const nodes = ref([]); const users = ref([]);
-                const newVps = ref({ name: '', ip: '' }); const newNodeParams = reactive({}); const newUser = reactive({ username: '', password: '', traffic_limit_gb: '', expire_date: '' });
+                
+                // 🌟 修复：新增 OS 系统架构参数
+                const newVps = ref({ name: '', ip: '', os: 'debian' }); 
+                const newNodeParams = reactive({}); const newUser = reactive({ username: '', password: '', traffic_limit_gb: '', expire_date: '' });
                 const currentDomain = window.location.origin;
+
+                // 🌟 修复：从本地缓存读取每个 IP 对应的系统类型，防止刷新丢失
+                const deployOsMap = reactive(JSON.parse(localStorage.getItem('kui_deploy_os') || '{}'));
+                const saveOsMap = () => { localStorage.setItem('kui_deploy_os', JSON.stringify(deployOsMap)); };
 
                 const isOnline = (lastReport) => lastReport && (Date.now() - lastReport) < 600000;
                 const formatBytes = (bytes) => { if (bytes === 0) return '0 B'; const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'], i = Math.floor(Math.log(bytes) / Math.log(k)); return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]; };
                 const formatDate = (ts) => { if (!ts) return '永久'; const d = new Date(ts); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
                 const getTrafficPercent = (used, limit) => { if (!limit || limit === 0) return 0; return Math.min((used / limit) * 100, 100); };
 
-                // 🌟 计算全局大盘数据
+                // 计算全局大盘数据
                 const globalOnline = computed(() => servers.value.filter(s => isOnline(s.last_report)).length);
                 const globalTraffic = computed(() => nodes.value.reduce((sum, n) => sum + (parseFloat(n.traffic_used) || 0), 0));
                 const globalSpeedIn = computed(() => servers.value.reduce((sum, s) => sum + (parseFloat(s.net_in_speed) || 0), 0));
@@ -354,6 +374,8 @@
                         servers.value = data.servers || []; nodes.value = data.nodes || []; users.value = data.users || [];
                         servers.value.forEach(s => { 
                             if(!newNodeParams[s.ip]) newNodeParams[s.ip] = { protocol: 'Reality', port: 443, username: 'admin', sni: '', relay_type: 'external', traffic_limit_gb: '', expire_date: '' }; 
+                            // 兜底保障：如果之前没选过 OS，默认给 debian
+                            if(!deployOsMap[s.ip]) deployOsMap[s.ip] = 'debian';
                         });
                         renderCharts();
                     } catch(e) {}
@@ -375,7 +397,15 @@
                 const deleteUser = async (username) => { if(confirm('⚠️ 确定删除用户？节点将归还给管理员。')) { await fetchApi(`/api/users?username=${username}`, { method: 'DELETE' }); refreshData(); } };
                 const resetUserTraffic = async (username) => { await fetchApi('/api/users', { method: 'PUT', body: JSON.stringify({ username, reset_traffic: true }) }); refreshData(); };
 
-                const addVps = async () => { await fetchApi('/api/vps', { method: 'POST', body: JSON.stringify(newVps.value) }); newVps.value = { name: '', ip: '' }; refreshData(); };
+                // 🌟 修复：接入机器时，不仅请求后端，还将 OS 保存到本地用于生成不同架构的指令
+                const addVps = async () => { 
+                    if(!newVps.value.ip || !newVps.value.name) return alert('请输入名称和IP');
+                    deployOsMap[newVps.value.ip] = newVps.value.os;
+                    saveOsMap();
+                    await fetchApi('/api/vps', { method: 'POST', body: JSON.stringify({ ip: newVps.value.ip, name: newVps.value.name }) }); 
+                    newVps.value = { name: '', ip: '', os: 'debian' }; 
+                    refreshData(); 
+                };
                 const deleteVps = async (ip) => { if(confirm('🧨 确定移除该机器？所有数据将被清空！')) { await fetchApi(`/api/vps?ip=${ip}`, { method: 'DELETE' }); refreshData(); } };
                 
                 const addNode = async (ip) => {
@@ -405,12 +435,22 @@
                 const startPolling = () => { if (!timer) timer = setInterval(() => { if (isLoggedIn.value) refreshData(); }, 30000); };
                 const stopPolling = () => { if (timer) clearInterval(timer); timer = null; };
                 
-                const generateCmd = (ip) => `apt-get update -y && apt-get install -y curl && bash <(curl -sL https://raw.githubusercontent.com/a62169722/KUI/main/vps/kui.sh) --api "${currentDomain}" --ip "${ip}" --token "${authKey.value}"`;
+                // 🌟 修复：智能根据系统类型 (Debian vs Alpine) 动态生成对应的 Linux 安装指令
+                const generateCmd = (ip) => {
+                    const osType = deployOsMap[ip] || 'debian';
+                    const scriptUrl = "https://raw.githubusercontent.com/a62169722/KUI/main/vps/kui.sh";
+                    if (osType === 'alpine') {
+                        return `apk update && apk add curl && curl -sL ${scriptUrl} | sh -s -- --api "${currentDomain}" --ip "${ip}" --token "${authKey.value}"`;
+                    } else {
+                        return `apt-get update -y && apt-get install -y curl && bash <(curl -sL ${scriptUrl}) --api "${currentDomain}" --ip "${ip}" --token "${authKey.value}"`;
+                    }
+                };
+
                 const generateSubLink = (ip='') => `${currentDomain}/api/sub?user=${currentUser.value}&token=${authKey.value}${ip?`&ip=${ip}`:''}`;
                 const copyCommand = (txt, msg) => navigator.clipboard.writeText(txt).then(() => alert(msg));
 
                 onMounted(() => { if (authKey.value && currentUser.value) { isLoggedIn.value = true; refreshData(); startPolling(); } document.addEventListener('visibilitychange', () => { if (document.hidden) stopPolling(); else if (isLoggedIn.value) { refreshData(); startPolling(); } }); });
-                return { isLoggedIn, loginUser, password, currentUser, role, activeTab, servers, nodes, users, newVps, newNodeParams, newUser, login, logout, refreshData, addUser, toggleUser, deleteUser, resetUserTraffic, addVps, deleteVps, addNode, deleteNode, toggleNode, resetTraffic, getNodesByIp, getVpsName, getAllOtherNodes, formatBytes, formatDate, getTrafficPercent, isOnline, generateCmd, generateSubLink, copyCommand, globalOnline, globalTraffic, globalSpeedIn, globalSpeedOut };
+                return { isLoggedIn, loginUser, password, currentUser, role, activeTab, servers, nodes, users, newVps, newNodeParams, newUser, login, logout, refreshData, addUser, toggleUser, deleteUser, resetUserTraffic, addVps, deleteVps, addNode, deleteNode, toggleNode, resetTraffic, getNodesByIp, getVpsName, getAllOtherNodes, formatBytes, formatDate, getTrafficPercent, isOnline, generateCmd, generateSubLink, copyCommand, globalOnline, globalTraffic, globalSpeedIn, globalSpeedOut, deployOsMap, saveOsMap };
             }
         }).mount('#app');
     </script>
